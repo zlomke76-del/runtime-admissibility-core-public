@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runtime Admissibility Core — Docs</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <a class="back" href="/">← Back</a>
+      <h1>Runtime Admissibility Core</h1>
+      <p class="lede">
+        Runtime Admissibility Core evaluates whether a requested execution remains legitimate under current runtime conditions.
+      </p>
+
+      <section class="panel">
+        <h2>Boundary</h2>
+        <p>
+          It does not determine final truth, make domain decisions, or grant legal permission. It recomputes whether the packet establishes enough current state, authority, constraint, and consequence context for execution to remain admissible.
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Endpoint</h2>
+        <pre>POST /api/evaluate</pre>
+      </section>
+
+      <section class="panel">
+        <h2>Core packet shape</h2>
+        <pre>{
+  "packet_id": "demo-001",
+  "system_context": { "domain": "healthcare", "workflow": "discharge-readiness" },
+  "runtime_state": { "state_valid": true, "last_validated_at": "2026-05-20T10:00:00Z" },
+  "authority_context": { "status": "valid", "issuer": "attending-physician", "scope": ["discharge-review"] },
+  "constraint_context": { "action_constrained": true, "allowed_actions": ["prepare-review"] },
+  "consequence_boundary": { "level": "high", "scope": "clinical-discharge" },
+  "runtime_signals": [{ "source": "monitor", "statement": "oxygen instability detected" }]
+}</pre>
+      </section>
+
+      <section class="panel">
+        <h2>Outcomes</h2>
+        <ul>
+          <li><strong>admissible</strong> — state, authority, constraints, and consequence boundary survive current evaluation.</li>
+          <li><strong>conditional</strong> — execution may require warning, revalidation, or operator review.</li>
+          <li><strong>inadmissible</strong> — execution legitimacy fails under the supplied runtime packet.</li>
+        </ul>
+      </section>
+
+      <div class="actions">
+        <a href="/access.html">Customer access</a>
+      </div>
+    </main>
+  </body>
+</html>

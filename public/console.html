@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runtime Admissibility Console</title>
+    <meta name="description" content="Runtime Admissibility customer console for API keys, usage, subscriptions, and evaluation replay." />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="access-shell console-shell">
+      <nav class="topbar" aria-label="Console navigation">
+        <a class="back" href="/access.html">← Access</a>
+        <div class="topbar-links">
+          <a href="/docs.html">Docs</a>
+          <a href="#keys">Keys</a>
+          <a href="#evaluations">Evaluations</a>
+        </div>
+      </nav>
+
+      <section class="section-panel console-hero-panel">
+        <div class="section-heading split">
+          <div>
+            <p class="eyebrow">Customer console</p>
+            <h1>Account, keys, usage, replay.</h1>
+            <p class="lede">
+              Paste an issued Runtime Admissibility token to view subscription status, quota consumption,
+              active API keys, and recent deterministic evaluation artifacts.
+            </p>
+          </div>
+          <div class="console-auth-card">
+            <label for="console-token">API token</label>
+            <input id="console-token" type="password" placeholder="ra_live_..." autocomplete="off" spellcheck="false" />
+            <div class="actions tight">
+              <button onclick="loadConsole()">Load account</button>
+              <button onclick="clearConsoleToken()">Clear</button>
+            </div>
+            <p id="console-status" class="status-line">No account loaded.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="overview" class="console-grid">
+        <article class="metric-card">
+          <span>Plan</span>
+          <strong id="metric-plan">—</strong>
+          <p id="metric-status">Subscription status unavailable.</p>
+        </article>
+        <article class="metric-card">
+          <span>Usage</span>
+          <strong id="metric-usage">—</strong>
+          <p id="metric-period">Current billing period.</p>
+        </article>
+        <article class="metric-card">
+          <span>Keys</span>
+          <strong id="metric-keys">—</strong>
+          <p id="metric-max-keys">Active API key capacity.</p>
+        </article>
+      </section>
+
+      <section id="keys" class="section-panel">
+        <div class="section-heading split">
+          <div>
+            <p class="eyebrow">API lifecycle</p>
+            <h2>Keys are scoped to the customer account.</h2>
+            <p>New tokens are shown once. Store them securely before leaving this page.</p>
+          </div>
+          <div class="key-create-row">
+            <input id="new-key-label" placeholder="Key label" />
+            <button onclick="createConsoleKey()">Create key</button>
+          </div>
+        </div>
+        <div id="new-key-box" class="new-key-box" hidden></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Status</th>
+                <th>Last used</th>
+                <th>Expires</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="keys-table"><tr><td colspan="5">Load an account to view keys.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="evaluations" class="section-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Replay trail</p>
+          <h2>Recent evaluations.</h2>
+          <p>Each row is a retained evaluation artifact with outcome, context, hash, and usage position.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Packet</th>
+                <th>Outcome</th>
+                <th>Domain / workflow</th>
+                <th>Artifact hash</th>
+              </tr>
+            </thead>
+            <tbody id="evaluations-table"><tr><td colspan="5">Load an account to view evaluations.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      let accountCache = null;
+
+      function token() {
+        return String(document.getElementById("console-token").value || "").trim();
+      }
+
+      function shortHash(value) {
+        if (!value) return "—";
+        return value.length > 20 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value;
+      }
+
+      function fmtDate(value) {
+        if (!value) return "—";
+        const date = new Date(value);
+        return Number.isFinite(date.getTime()) ? date.toLocaleString() : value;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" }[ch]));
+      }
+
+      function setStatus(message) {
+        document.getElementById("console-status").textContent = message;
+      }
+
+      function persistToken(value) {
+        if (value) window.localStorage.setItem("ra_console_token", value);
+      }
+
+      function clearConsoleToken() {
+        window.localStorage.removeItem("ra_console_token");
+        document.getElementById("console-token").value = "";
+        accountCache = null;
+        renderEmpty();
+        setStatus("Token cleared.");
+      }
+
+      async function accountRequest(payload) {
+        const method = payload ? "POST" : "GET";
+        const response = await fetch("/api/account", {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token()}`,
+          },
+          body: payload ? JSON.stringify(payload) : undefined,
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || result.error || "Account request failed.");
+        return result;
+      }
+
+      async function loadConsole() {
+        if (!token()) {
+          setStatus("Paste an API token first.");
+          return;
+        }
+        setStatus("Loading account...");
+        try {
+          persistToken(token());
+          accountCache = await accountRequest();
+          renderAccount(accountCache);
+          setStatus(`Loaded ${accountCache.client?.name || "Runtime Admissibility account"}.`);
+        } catch (error) {
+          setStatus(error.message || "Account load failed.");
+        }
+      }
+
+      async function createConsoleKey() {
+        if (!token()) return setStatus("Load an account before creating a key.");
+        const label = document.getElementById("new-key-label").value || `customer-key-${Date.now()}`;
+        setStatus("Creating key...");
+        try {
+          const created = await accountRequest({ action: "create_key", label, expires_in_days: 365 });
+          const box = document.getElementById("new-key-box");
+          box.hidden = false;
+          box.innerHTML = `<strong>New token — copy now:</strong><pre>${escapeHtml(created.token)}</pre><button onclick="navigator.clipboard.writeText('${created.token}')">Copy token</button>`;
+          await loadConsole();
+        } catch (error) {
+          setStatus(error.message || "Key creation failed.");
+        }
+      }
+
+      async function revokeConsoleKey(keyId) {
+        if (!window.confirm("Revoke this API key? This cannot be undone.")) return;
+        setStatus("Revoking key...");
+        try {
+          await accountRequest({ action: "revoke_key", api_key_id: keyId });
+          await loadConsole();
+        } catch (error) {
+          setStatus(error.message || "Key revocation failed.");
+        }
+      }
+
+      function renderEmpty() {
+        document.getElementById("metric-plan").textContent = "—";
+        document.getElementById("metric-status").textContent = "Subscription status unavailable.";
+        document.getElementById("metric-usage").textContent = "—";
+        document.getElementById("metric-period").textContent = "Current billing period.";
+        document.getElementById("metric-keys").textContent = "—";
+        document.getElementById("metric-max-keys").textContent = "Active API key capacity.";
+        document.getElementById("keys-table").innerHTML = '<tr><td colspan="5">Load an account to view keys.</td></tr>';
+        document.getElementById("evaluations-table").innerHTML = '<tr><td colspan="5">Load an account to view evaluations.</td></tr>';
+      }
+
+      function renderAccount(data) {
+        const sub = data.subscription || {};
+        const usage = data.usage || {};
+        const keys = data.keys || [];
+        const activeKeys = keys.filter((key) => key.status === "active");
+
+        document.getElementById("metric-plan").textContent = sub.plan_code || "No active plan";
+        document.getElementById("metric-status").textContent = sub.status ? `${sub.status}${sub.cancel_at_period_end ? " · cancels at period end" : ""}` : "No active subscription found.";
+        document.getElementById("metric-usage").textContent = usage.evaluations_used != null ? `${usage.evaluations_used} / ${usage.monthly_quota || "∞"}` : "—";
+        document.getElementById("metric-period").textContent = usage.period_start ? `${usage.period_start} → ${usage.period_end}` : "No usage period found.";
+        document.getElementById("metric-keys").textContent = `${activeKeys.length} active`;
+        document.getElementById("metric-max-keys").textContent = `Max ${sub.max_keys || 1} active key(s) for this plan.`;
+
+        document.getElementById("keys-table").innerHTML = keys.length ? keys.map((key) => `
+          <tr>
+            <td>${escapeHtml(key.label)}</td>
+            <td>${escapeHtml(key.status)}</td>
+            <td>${escapeHtml(fmtDate(key.last_used_at))}</td>
+            <td>${escapeHtml(fmtDate(key.expires_at))}</td>
+            <td>${key.status === "active" ? `<button onclick="revokeConsoleKey('${key.id}')">Revoke</button>` : ""}</td>
+          </tr>`).join("") : '<tr><td colspan="5">No keys found.</td></tr>';
+
+        const evaluations = data.recent_evaluations || [];
+        document.getElementById("evaluations-table").innerHTML = evaluations.length ? evaluations.map((event) => `
+          <tr>
+            <td>${escapeHtml(fmtDate(event.created_at))}</td>
+            <td>${escapeHtml(event.packet_id || "—")}</td>
+            <td>${escapeHtml(event.outcome || "—")}</td>
+            <td>${escapeHtml([event.request_domain, event.request_workflow].filter(Boolean).join(" / ") || "—")}</td>
+            <td title="${escapeHtml(event.artifact_hash || "")}">${escapeHtml(shortHash(event.artifact_hash))}</td>
+          </tr>`).join("") : '<tr><td colspan="5">No evaluations recorded yet.</td></tr>';
+      }
+
+      window.addEventListener("DOMContentLoaded", () => {
+        const saved = window.localStorage.getItem("ra_console_token");
+        if (saved) document.getElementById("console-token").value = saved;
+        renderEmpty();
+      });
+    </script>
+  </body>
+</html>

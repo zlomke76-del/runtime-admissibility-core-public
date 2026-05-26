@@ -1,0 +1,9 @@
+{
+  "name": "runtime-admissibility-core",
+  "version": "0.3.0",
+  "private": true,
+  "description": "A deterministic primitive for evaluating whether execution remains admissible under current state, authority, constraints, and consequence boundary.",
+  "scripts": {
+    "test:vectors": "node scripts/test-vectors.js"
+  }
+}
